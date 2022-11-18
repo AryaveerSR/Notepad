@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use eframe::{
-    egui::{self, Direction, FontSelection, TextFormat, Ui},
+    egui::{CentralPanel, Context, Direction, FontSelection, Layout, TextEdit, TopBottomPanel},
     epaint::{Color32, FontFamily, FontId},
+    App, Frame, NativeOptions,
 };
+use rfd::FileDialog;
+use std::fs;
 
 fn main() {
-    let options = eframe::NativeOptions::default();
+    let options = NativeOptions::default();
     eframe::run_native(
         "Notepad",
         options,
@@ -16,64 +19,75 @@ fn main() {
 
 struct MyApp {
     content: String,
+    opened_file: Option<String>,
+    title: String,
+}
+
+impl MyApp {
+    fn open_file(&mut self) {
+        if let Some(path) = FileDialog::new().pick_file() {
+            self.opened_file = Some(path.display().to_string());
+            self.title = format!("Notepad - {}", path.display().to_string());
+            self.content = fs::read_to_string(path).unwrap();
+        }
+    }
+
+    fn save_file(&mut self, path: String) {
+        fs::write(path, self.content.clone()).unwrap();
+    }
+
+    fn save_file_as(&mut self) {
+        if let Some(path) = FileDialog::new()
+            .add_filter("Text file", &["txt"])
+            .save_file()
+        {
+            self.save_file(path.display().to_string());
+        }
+    }
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
             content: "".to_owned(),
+            opened_file: None,
+            title: "Notepad".to_owned(),
         }
     }
 }
 
-fn highlighter(string: &str) -> egui::text::LayoutJob {
-    let mut layout_job = egui::text::LayoutJob::default();
-    string.lines().for_each(|line| {
-        let mut line = line.to_owned();
-        line.push_str("\n");
-        layout_job.append(
-            &line,
-            0 as f32,
-            TextFormat::simple(
-                FontId::monospace(18 as f32),
-                match line.chars().next().unwrap() {
-                    '#' => Color32::BLUE,
-                    '>' => Color32::GRAY,
-                    '*' => Color32::GREEN,
-                    _ => Color32::WHITE,
-                },
-            ),
-        );
-    });
-    layout_job
-}
-
-impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+impl App for MyApp {
+    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+        frame.set_window_title(&self.title);
+        TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                // if ui.button("E").clicked() {} **TODO**
+                if ui.button("Open").clicked() {
+                    self.open_file();
+                }
+                if ui.button("Save As").clicked() {
+                    self.save_file_as();
+                }
+                if ui.button("Save").clicked() {
+                    if let Some(path) = &self.opened_file {
+                        self.save_file(path.to_string());
+                    } else {
+                        self.save_file_as();
+                    }
+                }
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(
-                egui::Layout::centered_and_justified(Direction::LeftToRight),
+                Layout::centered_and_justified(Direction::LeftToRight),
                 |ui| {
-                    let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                        let mut layout_job: egui::text::LayoutJob = highlighter(string);
-                        layout_job.wrap.max_width = wrap_width;
-                        ui.fonts().layout_job(layout_job)
-                    };
-
                     ui.add(
-                        egui::TextEdit::multiline(&mut self.content)
+                        TextEdit::multiline(&mut self.content)
                             .font(FontSelection::FontId(FontId::new(
                                 18 as f32,
                                 FontFamily::Monospace,
                             )))
-                            .text_color(Color32::from_gray(200))
-                            .layouter(&mut layouter),
+                            .text_color(Color32::WHITE),
                     );
                 },
             );
