@@ -4,12 +4,12 @@ use eframe::{
         self, Button, CentralPanel, Context, Direction, FontSelection, Label, Layout, Response,
         TextEdit, TextStyle, TopBottomPanel, Ui, Visuals, Widget, WidgetText,
     },
-    epaint::{vec2, Color32, FontFamily, FontId, Stroke},
+    epaint::{vec2, Color32, FontFamily, FontId, Rect, Stroke},
     App, Frame, NativeOptions,
 };
 
 use rfd::FileDialog;
-use std::fs;
+use std::{any, fs};
 
 fn main() {
     let options = NativeOptions::default();
@@ -130,33 +130,25 @@ impl App for MyApp {
         TopBottomPanel::top("tabs").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 for (i, tab) in self.tabs.clone().iter().enumerate() {
-                    if ui
-                        .selectable_label(
-                            i == self.current_tab,
-                            match &tab.opened_file {
-                                Some(path) => file_from_path(path.to_string()),
-                                None => "Untitled".to_owned(),
-                            },
-                        )
-                        .clicked()
-                    {
+                    let (res, c_res) = tab_widget(
+                        ui,
+                        match &tab.opened_file {
+                            Some(path) => file_from_path(path.to_string()),
+                            None => "Untitled".to_owned(),
+                        },
+                        i == self.current_tab,
+                        self.is_dark_mode,
+                    );
+                    if res.clicked() {
                         self.current_tab = i;
                     }
-                    if ui.button("x").clicked() {
+                    if c_res.clicked() {
                         self.remove_tab(i);
                     }
                 }
                 if ui.button("+").clicked() {
                     self.new_tab();
                 }
-                let (res, c_res) = tab_widget(ui, "hey".to_string(), false, self.is_dark_mode);
-                if res.clicked() {
-                    println!("clicked");
-                }
-                if c_res.clicked() {
-                    println!("close clicked");
-                }
-                tab_widget(ui, "hoi".to_string(), true, self.is_dark_mode);
             });
         });
 
@@ -230,6 +222,13 @@ fn get_visuals(is_dark_mode: bool) -> Visuals {
         true => Stroke::new(1.0, Color32::from_gray(50)),
         false => Stroke::new(1.0, Color32::from_gray(200)),
     };
+    visuals.widgets.hovered.bg_stroke = Stroke::new(
+        1.0,
+        match is_dark_mode {
+            true => Color32::from_gray(25),
+            false => Color32::from_gray(240),
+        },
+    );
     visuals
 }
 
@@ -247,29 +246,50 @@ fn tab_widget(
     let text = WidgetText::Galley(ui.fonts().layout_no_wrap(
         tab,
         FontId::default(),
-        if is_dark_mode {
-            Color32::WHITE
-        } else {
-            Color32::BLACK
-        },
+        Color32::WHITE,
     ))
     .into_galley(ui, Some(false), 1.0, FontId::default());
-    let tab_size = text.size() + ui.spacing().button_padding * 4.0;
-    let (rect, mut response) = ui.allocate_exact_size(tab_size, egui::Sense::click());
+    let text_size = text.size() + ui.spacing().button_padding * 4.0;
+    let (text_rect, mut text_response) = ui.allocate_exact_size(text_size, egui::Sense::click());
 
     let cancel_size = ui.spacing().interact_size.y * egui::vec2(1.0, 1.0);
-    let (cancel_rect, cancel_response) = ui.allocate_exact_size(cancel_size, egui::Sense::click());
+    let (cancel_rect, mut cancel_response) =
+        ui.allocate_exact_size(cancel_size, egui::Sense::click());
 
-    if response.clicked() || cancel_response.clicked() {
-        response.mark_changed();
+    if text_response.clicked() || text_response.hovered() {
+        text_response.mark_changed();
+    }
+    if cancel_response.clicked() || cancel_response.hovered() {
+        cancel_response.mark_changed();
     }
 
-    if ui.is_rect_visible(rect) {
-        let visuals = ui.style().interact(&response);
-        let rect = rect.expand(visuals.expansion);
+    let tab_rect = Rect::from_two_pos(text_rect.min, cancel_rect.max);
+    if ui.is_rect_visible(tab_rect) {
+        let visuals = ui.style().interact(&text_response);
+        let rect = tab_rect.expand(visuals.expansion);
+        ui.painter().rect(
+            rect,
+            4.0,
+            if is_active {
+                match is_dark_mode {
+                    true => Color32::from_rgb(0, 120, 215),
+                    false => Color32::from_rgb(0, 120, 215),
+                }
+            } else if text_response.hovered() || cancel_response.hovered() {
+                visuals.bg_fill
+            } else {
+                Color32::TRANSPARENT
+            },
+            Stroke::none(),
+        );
+    }
+
+    if ui.is_rect_visible(text_rect) {
+        let visuals = ui.style().interact(&text_response);
+        let rect = text_rect.expand(visuals.expansion);
         let text_pos = rect.center() - vec2(text.size().x / 2.0, text.size().y / 2.0);
         ui.painter()
-            .rect(rect, 2.0, Color32::TRANSPARENT, Stroke::none());
+            .rect(rect, 4.0, Color32::TRANSPARENT, Stroke::none());
         text.paint_with_visuals(ui.painter(), text_pos, visuals)
     }
 
@@ -287,38 +307,16 @@ fn tab_widget(
                 egui::pos2(rect.left() + OFFSET, rect.top() + OFFSET),
                 egui::pos2(rect.right() - OFFSET, rect.bottom() - OFFSET),
             ],
-            Stroke::new(WIDTH, visuals.fg_stroke.color),
+            Stroke::new(WIDTH, Color32::WHITE),
         );
         ui.painter().line_segment(
             [
                 egui::pos2(rect.left() + OFFSET, rect.bottom() - OFFSET),
                 egui::pos2(rect.right() - OFFSET, rect.top() + OFFSET),
             ],
-            Stroke::new(WIDTH, visuals.fg_stroke.color),
+            Stroke::new(WIDTH, Color32::WHITE),
         );
     }
 
-    (response, cancel_response)
+    (text_response, cancel_response)
 }
-
-/*
-    Cancel Part of Tab with Text "x" instead of drawing the icon.
-
-    if ui.is_rect_visible(cancel_rect) {
-        let visuals = ui.style().interact(&cancel_response);
-        let rect = cancel_rect.expand(visuals.expansion);
-        let text = WidgetText::Galley(ui.fonts().layout_no_wrap(
-            "x".to_string(),
-            FontId::default(),
-            visuals.text_color(),
-        ))
-        .into_galley(ui, Some(false), 1.0, FontId::default());
-
-        let text_pos = rect.center() - vec2(text.size().x / 2.0, text.size().y / 2.0);
-
-        ui.painter()
-            .rect(rect, 4.0, visuals.bg_fill, visuals.bg_stroke);
-        text.paint_with_visuals(ui.painter(), text_pos, visuals)
-    }
-
-*/
