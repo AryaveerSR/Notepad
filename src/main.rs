@@ -1,15 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use eframe::{
     egui::{
-        self, Button, CentralPanel, Context, Direction, FontSelection, Label, Layout, Response,
-        TextEdit, TextStyle, TopBottomPanel, Ui, Visuals, Widget, WidgetText,
+        self, Button, CentralPanel, Context, Direction, FontSelection, Layout, Response, TextEdit,
+        TopBottomPanel, Ui, Visuals, Widget, WidgetText,
     },
+    emath::Align,
     epaint::{vec2, Color32, FontFamily, FontId, Rect, Stroke},
     App, Frame, NativeOptions,
 };
 
 use rfd::FileDialog;
-use std::{any, fs};
+use std::fs;
 
 fn main() {
     let options = NativeOptions::default();
@@ -113,17 +114,9 @@ impl App for MyApp {
                         }
                     }
                 });
-                if action_button(
-                    match self.is_dark_mode {
-                        true => "Light Mode",
-                        false => "Dark Mode",
-                    },
-                    ui,
-                )
-                .clicked()
-                {
-                    self.is_dark_mode = !self.is_dark_mode;
-                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    toggle_theme(ui, &mut self.is_dark_mode);
+                });
             });
         });
 
@@ -137,7 +130,6 @@ impl App for MyApp {
                             None => "Untitled".to_owned(),
                         },
                         i == self.current_tab,
-                        self.is_dark_mode,
                     );
                     if res.clicked() {
                         self.current_tab = i;
@@ -195,7 +187,6 @@ fn text_editor(text: &mut String, is_dark_mode: bool) -> TextEdit {
             16.0,
             FontFamily::Monospace,
         )))
-        .lock_focus(true)
         .margin(vec2(8.0, 8.0))
         .frame(false)
         .text_color(if is_dark_mode {
@@ -237,12 +228,7 @@ fn file_from_path(path: String) -> String {
     file[file.len() - 1].to_string()
 }
 
-fn tab_widget(
-    ui: &mut egui::Ui,
-    tab: String,
-    is_active: bool,
-    is_dark_mode: bool,
-) -> (Response, Response) {
+fn tab_widget(ui: &mut egui::Ui, tab: String, is_active: bool) -> (Response, Response) {
     let text = WidgetText::Galley(ui.fonts().layout_no_wrap(
         tab,
         FontId::default(),
@@ -271,10 +257,7 @@ fn tab_widget(
             rect,
             4.0,
             if is_active {
-                match is_dark_mode {
-                    true => Color32::from_rgb(0, 120, 215),
-                    false => Color32::from_rgb(0, 120, 215),
-                }
+                Color32::from_rgb(0, 120, 215)
             } else if text_response.hovered() || cancel_response.hovered() {
                 visuals.bg_fill
             } else {
@@ -319,4 +302,33 @@ fn tab_widget(
     }
 
     (text_response, cancel_response)
+}
+
+fn toggle_theme(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+    let desired_size = ui.spacing().interact_size.y * egui::vec2(2.0, 1.0);
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, *on, ""));
+
+    if ui.is_rect_visible(rect) {
+        let how_on = ui.ctx().animate_bool(response.id, *on);
+        let visuals = ui.style().interact_selectable(&response, *on);
+        let rect = rect.expand(visuals.expansion);
+        let radius = 0.5 * rect.height();
+        ui.painter()
+            .rect(rect, radius, Color32::from_rgb(0, 120, 215), Stroke::none());
+        let circle_x = egui::lerp((rect.left() + radius)..=(rect.right() - radius), how_on);
+        let center = egui::pos2(circle_x, rect.center().y);
+        ui.painter().circle(
+            center,
+            0.75 * radius,
+            Color32::from_rgb(0, 120, 215),
+            Stroke::new(1.0, Color32::WHITE),
+        );
+    }
+
+    response
 }
