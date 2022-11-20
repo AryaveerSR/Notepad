@@ -226,7 +226,6 @@ fn get_visuals(is_dark_mode: bool) -> Visuals {
 }
 
 fn file_from_path(path: String) -> String {
-    let mut file_name = path.clone();
-    file_name.retain(|c| c != '/');
-    file_name
+    let file = path.split("\\").collect::<Vec<&str>>();
+    file[file.len() - 1].to_string()
 }
