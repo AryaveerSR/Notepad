@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use eframe::{
     egui::{
-        Button, CentralPanel, Context, Direction, FontSelection, Layout, Response, TextEdit,
-        TopBottomPanel, Ui, Visuals, Widget,
+        self, Button, CentralPanel, Context, Direction, FontSelection, Label, Layout, Response,
+        TextEdit, TextStyle, TopBottomPanel, Ui, Visuals, Widget, WidgetText,
     },
     epaint::{vec2, Color32, FontFamily, FontId, Stroke},
     App, Frame, NativeOptions,
@@ -149,6 +149,14 @@ impl App for MyApp {
                 if ui.button("+").clicked() {
                     self.new_tab();
                 }
+                let (res, c_res) = tab_widget(ui, "hey".to_string(), false, self.is_dark_mode);
+                if res.clicked() {
+                    println!("clicked");
+                }
+                if c_res.clicked() {
+                    println!("close clicked");
+                }
+                tab_widget(ui, "hoi".to_string(), true, self.is_dark_mode);
             });
         });
 
@@ -229,3 +237,88 @@ fn file_from_path(path: String) -> String {
     let file = path.split("\\").collect::<Vec<&str>>();
     file[file.len() - 1].to_string()
 }
+
+fn tab_widget(
+    ui: &mut egui::Ui,
+    tab: String,
+    is_active: bool,
+    is_dark_mode: bool,
+) -> (Response, Response) {
+    let text = WidgetText::Galley(ui.fonts().layout_no_wrap(
+        tab,
+        FontId::default(),
+        if is_dark_mode {
+            Color32::WHITE
+        } else {
+            Color32::BLACK
+        },
+    ))
+    .into_galley(ui, Some(false), 1.0, FontId::default());
+    let tab_size = text.size() + ui.spacing().button_padding * 4.0;
+    let (rect, mut response) = ui.allocate_exact_size(tab_size, egui::Sense::click());
+
+    let cancel_size = ui.spacing().interact_size.y * egui::vec2(1.0, 1.0);
+    let (cancel_rect, cancel_response) = ui.allocate_exact_size(cancel_size, egui::Sense::click());
+
+    if response.clicked() || cancel_response.clicked() {
+        response.mark_changed();
+    }
+
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+        let rect = rect.expand(visuals.expansion);
+        let text_pos = rect.center() - vec2(text.size().x / 2.0, text.size().y / 2.0);
+        ui.painter()
+            .rect(rect, 2.0, Color32::TRANSPARENT, Stroke::none());
+        text.paint_with_visuals(ui.painter(), text_pos, visuals)
+    }
+
+    if ui.is_rect_visible(cancel_rect) {
+        let visuals = ui.style().interact(&cancel_response);
+        let rect = cancel_rect.expand(visuals.expansion);
+
+        ui.painter()
+            .rect(rect, 4.0, Color32::TRANSPARENT, Stroke::none());
+
+        const OFFSET: f32 = 5.5;
+        const WIDTH: f32 = 2.0;
+        ui.painter().line_segment(
+            [
+                egui::pos2(rect.left() + OFFSET, rect.top() + OFFSET),
+                egui::pos2(rect.right() - OFFSET, rect.bottom() - OFFSET),
+            ],
+            Stroke::new(WIDTH, visuals.fg_stroke.color),
+        );
+        ui.painter().line_segment(
+            [
+                egui::pos2(rect.left() + OFFSET, rect.bottom() - OFFSET),
+                egui::pos2(rect.right() - OFFSET, rect.top() + OFFSET),
+            ],
+            Stroke::new(WIDTH, visuals.fg_stroke.color),
+        );
+    }
+
+    (response, cancel_response)
+}
+
+/*
+    Cancel Part of Tab with Text "x" instead of drawing the icon.
+
+    if ui.is_rect_visible(cancel_rect) {
+        let visuals = ui.style().interact(&cancel_response);
+        let rect = cancel_rect.expand(visuals.expansion);
+        let text = WidgetText::Galley(ui.fonts().layout_no_wrap(
+            "x".to_string(),
+            FontId::default(),
+            visuals.text_color(),
+        ))
+        .into_galley(ui, Some(false), 1.0, FontId::default());
+
+        let text_pos = rect.center() - vec2(text.size().x / 2.0, text.size().y / 2.0);
+
+        ui.painter()
+            .rect(rect, 4.0, visuals.bg_fill, visuals.bg_stroke);
+        text.paint_with_visuals(ui.painter(), text_pos, visuals)
+    }
+
+*/
