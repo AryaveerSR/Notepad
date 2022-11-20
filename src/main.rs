@@ -1,10 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use eframe::{
-    egui::{CentralPanel, Context, Direction, FontSelection, Layout, TextEdit, TopBottomPanel},
-    epaint::{Color32, FontFamily, FontId},
+    egui::{
+        self, Button, CentralPanel, Context, Direction, FontSelection, Layout, Response, Style,
+        TextBuffer, TextEdit, TopBottomPanel, Ui, Visuals, Widget,
+    },
+    epaint::{vec2, Color32, FontFamily, FontId, Rounding, Stroke},
     App, Frame, NativeOptions,
 };
+
 use rfd::FileDialog;
 use std::fs;
 
@@ -21,6 +24,18 @@ struct MyApp {
     content: String,
     opened_file: Option<String>,
     title: String,
+    is_dark_mode: bool,
+}
+
+impl Default for MyApp {
+    fn default() -> Self {
+        Self {
+            content: "".to_owned(),
+            opened_file: None,
+            title: "Notepad".to_owned(),
+            is_dark_mode: true,
+        }
+    }
 }
 
 impl MyApp {
@@ -46,34 +61,43 @@ impl MyApp {
     }
 }
 
-impl Default for MyApp {
-    fn default() -> Self {
-        Self {
-            content: "".to_owned(),
-            opened_file: None,
-            title: "Notepad".to_owned(),
-        }
-    }
-}
-
 impl App for MyApp {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         frame.set_window_title(&self.title);
-        TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+        ctx.set_visuals(get_visuals(self.is_dark_mode));
+
+        TopBottomPanel::top("file_btns").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Open").clicked() {
+                if action_button("Open", ui).clicked() {
                     self.open_file();
                 }
-                if ui.button("Save As").clicked() {
+                if action_button("Save As", ui).clicked() {
                     self.save_file_as();
                 }
-                if ui.button("Save").clicked() {
+                if action_button("Save", ui).clicked() {
                     if let Some(path) = &self.opened_file {
                         self.save_file(path.to_string());
                     } else {
                         self.save_file_as();
                     }
                 }
+                if action_button(
+                    match self.is_dark_mode {
+                        true => "Light Mode",
+                        false => "Dark Mode",
+                    },
+                    ui,
+                )
+                .clicked()
+                {
+                    self.is_dark_mode = !self.is_dark_mode;
+                }
+            });
+        });
+
+        TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!("{} characters.", self.content.len()));
             });
         });
 
@@ -81,16 +105,52 @@ impl App for MyApp {
             ui.with_layout(
                 Layout::centered_and_justified(Direction::LeftToRight),
                 |ui| {
-                    ui.add(
-                        TextEdit::multiline(&mut self.content)
-                            .font(FontSelection::FontId(FontId::new(
-                                18 as f32,
-                                FontFamily::Monospace,
-                            )))
-                            .text_color(Color32::WHITE),
-                    );
+                    ui.add(text_editor(&mut self.content, self.is_dark_mode));
                 },
             );
         });
     }
+}
+
+fn action_button(text: &str, ui: &mut Ui) -> Response {
+    Button::new(text)
+        .fill(Color32::TRANSPARENT)
+        .stroke(Stroke::new(1.0, Color32::TRANSPARENT))
+        .ui(ui)
+}
+
+fn text_editor(text: &mut String, is_dark_mode: bool) -> TextEdit {
+    TextEdit::multiline(text)
+        .font(FontSelection::FontId(FontId::new(
+            16.0,
+            FontFamily::Monospace,
+        )))
+        .lock_focus(true)
+        .margin(vec2(8.0, 8.0))
+        .frame(false)
+        .text_color(if is_dark_mode {
+            Color32::WHITE
+        } else {
+            Color32::BLACK
+        })
+}
+
+fn get_visuals(is_dark_mode: bool) -> Visuals {
+    let mut visuals = match is_dark_mode {
+        true => eframe::egui::Visuals::dark(),
+        false => eframe::egui::Visuals::light(),
+    };
+    visuals.override_text_color = Some(match is_dark_mode {
+        true => Color32::WHITE,
+        false => Color32::BLACK,
+    });
+    visuals.widgets.noninteractive.bg_fill = match is_dark_mode {
+        true => Color32::from_gray(25),
+        false => Color32::from_gray(240),
+    };
+    visuals.widgets.noninteractive.bg_stroke = match is_dark_mode {
+        true => Stroke::new(1.0, Color32::from_gray(50)),
+        false => Stroke::new(1.0, Color32::from_gray(200)),
+    };
+    visuals
 }
