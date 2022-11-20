@@ -1,10 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use eframe::{
     egui::{
-        self, Button, CentralPanel, Context, Direction, FontSelection, Layout, Response, Style,
-        TextBuffer, TextEdit, TopBottomPanel, Ui, Visuals, Widget,
+        Button, CentralPanel, Context, Direction, FontSelection, Layout, Response, TextEdit,
+        TopBottomPanel, Ui, Visuals, Widget,
     },
-    epaint::{vec2, Color32, FontFamily, FontId, Rounding, Stroke},
+    epaint::{vec2, Color32, FontFamily, FontId, Stroke},
     App, Frame, NativeOptions,
 };
 
@@ -21,19 +21,27 @@ fn main() {
 }
 
 struct MyApp {
-    content: String,
-    opened_file: Option<String>,
     title: String,
     is_dark_mode: bool,
+    tabs: Vec<Tab>,
+    current_tab: usize,
+}
+#[derive(Clone, Debug)]
+struct Tab {
+    opened_file: Option<String>,
+    content: String,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            content: "".to_owned(),
-            opened_file: None,
             title: "Notepad".to_owned(),
             is_dark_mode: true,
+            current_tab: 0,
+            tabs: vec![Tab {
+                opened_file: None,
+                content: "".to_owned(),
+            }],
         }
     }
 }
@@ -41,14 +49,15 @@ impl Default for MyApp {
 impl MyApp {
     fn open_file(&mut self) {
         if let Some(path) = FileDialog::new().pick_file() {
-            self.opened_file = Some(path.display().to_string());
+            self.new_tab();
+            self.tabs[self.current_tab].opened_file = Some(path.display().to_string());
             self.title = format!("Notepad - {}", path.display().to_string());
-            self.content = fs::read_to_string(path).unwrap();
+            self.tabs[self.current_tab].content = fs::read_to_string(path).unwrap();
         }
     }
 
     fn save_file(&mut self, path: String) {
-        fs::write(path, self.content.clone()).unwrap();
+        fs::write(path, self.tabs[self.current_tab].content.clone()).unwrap();
     }
 
     fn save_file_as(&mut self) {
@@ -57,7 +66,28 @@ impl MyApp {
             .save_file()
         {
             self.save_file(path.display().to_string());
+            self.tabs[self.current_tab].opened_file = Some(path.display().to_string());
+            self.title = format!("Notepad - {}", path.display().to_string());
         }
+    }
+
+    fn remove_tab(&mut self, index: usize) {
+        if self.tabs.len() > 0 {
+            self.tabs.remove(index);
+            if (self.current_tab == index) && (self.current_tab == index) && (index != 0) {
+                self.current_tab -= 1;
+            } else if self.current_tab > index {
+                self.current_tab -= 1;
+            }
+        }
+    }
+
+    fn new_tab(&mut self) {
+        self.tabs.push(Tab {
+            opened_file: None,
+            content: "".to_owned(),
+        });
+        self.current_tab = self.tabs.len() - 1;
     }
 }
 
@@ -71,16 +101,18 @@ impl App for MyApp {
                 if action_button("Open", ui).clicked() {
                     self.open_file();
                 }
-                if action_button("Save As", ui).clicked() {
-                    self.save_file_as();
-                }
-                if action_button("Save", ui).clicked() {
-                    if let Some(path) = &self.opened_file {
-                        self.save_file(path.to_string());
-                    } else {
+                ui.add_enabled_ui(self.tabs.len() != 0, |ui| {
+                    if action_button("Save As", ui).clicked() {
                         self.save_file_as();
                     }
-                }
+                    if action_button("Save", ui).clicked() {
+                        if let Some(path) = &self.tabs[self.current_tab].opened_file {
+                            self.save_file(path.to_string());
+                        } else {
+                            self.save_file_as();
+                        }
+                    }
+                });
                 if action_button(
                     match self.is_dark_mode {
                         true => "Light Mode",
@@ -95,9 +127,42 @@ impl App for MyApp {
             });
         });
 
+        TopBottomPanel::top("tabs").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for (i, tab) in self.tabs.clone().iter().enumerate() {
+                    if ui
+                        .selectable_label(
+                            i == self.current_tab,
+                            match &tab.opened_file {
+                                Some(path) => file_from_path(path.to_string()),
+                                None => "Untitled".to_owned(),
+                            },
+                        )
+                        .clicked()
+                    {
+                        self.current_tab = i;
+                    }
+                    if ui.button("x").clicked() {
+                        self.remove_tab(i);
+                    }
+                }
+                if ui.button("+").clicked() {
+                    self.new_tab();
+                }
+            });
+        });
+
         TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("{} characters.", self.content.len()));
+                if self.tabs.len() > 0 {
+                    ui.label(format!(
+                        "{} characters. {} lines.",
+                        self.tabs[self.current_tab].content.len(),
+                        self.tabs[self.current_tab].content.lines().count()
+                    ));
+                } else {
+                    ui.label("No file opened.");
+                }
             });
         });
 
@@ -105,7 +170,12 @@ impl App for MyApp {
             ui.with_layout(
                 Layout::centered_and_justified(Direction::LeftToRight),
                 |ui| {
-                    ui.add(text_editor(&mut self.content, self.is_dark_mode));
+                    if self.tabs.len() > 0 {
+                        ui.add(text_editor(
+                            &mut self.tabs[self.current_tab].content,
+                            self.is_dark_mode,
+                        ));
+                    }
                 },
             );
         });
@@ -153,4 +223,10 @@ fn get_visuals(is_dark_mode: bool) -> Visuals {
         false => Stroke::new(1.0, Color32::from_gray(200)),
     };
     visuals
+}
+
+fn file_from_path(path: String) -> String {
+    let mut file_name = path.clone();
+    file_name.retain(|c| c != '/');
+    file_name
 }
