@@ -4,7 +4,7 @@
 
 ## A notepad application written in rust (egui)
 
-[![MIT](https://img.shields.io/crates/l/bitvec.svg?style=for-the-badge)](#License)
+[![MIT](https://img.shields.io/crates/l/bitvec.svg?style=for-the-badge)](LICENSE)
 
 </div>
 
